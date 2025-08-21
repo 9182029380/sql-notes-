@@ -1,0 +1,496 @@
+
+
+# 📘 SQL Subqueries (Notes)
+
+### ✅ What is a Subquery?
+
+* A **subquery** is a query inside another SQL query.
+* It is also called an **inner query** or **nested query**.
+* The **outer query** uses the result of the subquery.
+
+---
+
+### ✅ Syntax:
+
+```sql
+SELECT column1, column2
+FROM table
+WHERE column_name OPERATOR (SELECT column_name FROM table WHERE condition);
+```
+
+---
+
+### ✅ Types of Subqueries:
+
+1. **Single-row subquery** → Returns only one row.
+   Example:
+
+   ```sql
+   SELECT name, dept
+   FROM students
+   WHERE cgpa = (SELECT MAX(cgpa) FROM students);
+   ```
+
+   👉 Finds the student with the highest CGPA.
+
+---
+
+2. **Multi-row subquery** → Returns multiple rows.
+   Operators: `IN`, `ANY`, `ALL`
+   Example:
+
+   ```sql
+   SELECT name, dept
+   FROM students
+   WHERE dept IN (SELECT dept FROM students WHERE cgpa > 8.5);
+   ```
+
+   👉 Finds all students in departments where someone has CGPA > 8.5.
+
+---
+
+3. **Correlated subquery** → Subquery depends on the outer query row.
+   Example:
+
+   ```sql
+   SELECT s1.name, s1.cgpa
+   FROM students s1
+   WHERE s1.cgpa > (SELECT AVG(s2.cgpa) FROM students s2 WHERE s1.dept = s2.dept);
+   ```
+
+   👉 Finds students whose CGPA is above the average CGPA of their department.
+
+---
+
+4. **Nested subquery in FROM clause** → Used as a temporary table.
+   Example:
+
+   ```sql
+   SELECT dept, AVG(avg_cgpa)
+   FROM (SELECT dept, AVG(cgpa) AS avg_cgpa FROM students GROUP BY dept) AS temp
+   GROUP BY dept;
+   ```
+
+---
+
+### ✅ Key Points:
+
+* Subqueries can be used in **WHERE, HAVING, FROM, SELECT** clauses.
+* Use `IN` for multiple values, `=` for single value.
+* A **correlated subquery** runs for every row of the outer query (can be slower).
+* Prefer **JOINs** if performance is important.
+
+---
+
+### ✅ Practice Questions:
+
+1. Find the student(s) with the second highest CGPA.
+2. Find departments where average CGPA is greater than overall average CGPA.
+3. List students who scored above the department topper of “IT” department.
+4. Find students who are not in any department with CGPA less than 6.
+
+---
+
+
+Awesome—let’s build a tiny **e-commerce** schema in **MySQL**, seed it with data, and 
+then walk through **subquery examples** from basic → intermediate. 
+You (or your students) can copy-paste and run these in order.
+
+---
+
+# 1) Schema (MySQL)
+
+```sql
+-- Drop if re-running
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS customers;
+
+-- Customers
+CREATE TABLE customers (
+  customer_id INT PRIMARY KEY AUTO_INCREMENT,
+  name        VARCHAR(100) NOT NULL,
+  email       VARCHAR(150) UNIQUE,
+  city        VARCHAR(80),
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Products
+CREATE TABLE products (
+  product_id   INT PRIMARY KEY AUTO_INCREMENT,
+  name         VARCHAR(120) NOT NULL,
+  category     VARCHAR(60),
+  price        DECIMAL(10,2) NOT NULL,
+  stock_qty    INT NOT NULL,
+  is_active    TINYINT(1) DEFAULT 1
+) ENGINE=InnoDB;
+
+-- Orders
+CREATE TABLE orders (
+  order_id     INT PRIMARY KEY AUTO_INCREMENT,
+  customer_id  INT NOT NULL,
+  order_date   DATE NOT NULL,
+  status       VARCHAR(30) DEFAULT 'PLACED',
+  FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+) ENGINE=InnoDB;
+
+-- Order Items
+CREATE TABLE order_items (
+  order_item_id INT PRIMARY KEY AUTO_INCREMENT,
+  order_id      INT NOT NULL,
+  product_id    INT NOT NULL,
+  quantity      INT NOT NULL,
+  unit_price    DECIMAL(10,2) NOT NULL,
+  FOREIGN KEY (order_id) REFERENCES orders(order_id),
+  FOREIGN KEY (product_id) REFERENCES products(product_id)
+) ENGINE=InnoDB;
+```
+
+---
+
+# 2) Seed Data
+
+```sql
+-- Customers
+INSERT INTO customers (name, email, city) VALUES
+('Aarav',   'aarav@example.com',   'Mumbai'),
+('Diya',    'diya@example.com',    'Bengaluru'),
+('Kabir',   'kabir@example.com',   'Hyderabad'),
+('Ishita',  'ishita@example.com',  'Pune'),
+('Rohan',   'rohan@example.com',   'Chennai');
+
+-- Products
+INSERT INTO products (name, category, price, stock_qty, is_active) VALUES
+('Wireless Mouse',     'Electronics',  899.00,  120, 1),
+('Mechanical Keyboard','Electronics', 3499.00,   35, 1),
+('USB-C Cable',        'Accessories',  299.00,  500, 1),
+('Water Bottle',       'Home',         499.00,  200, 1),
+('Running Shoes',      'Fashion',     2499.00,   15, 1),
+('Desk Lamp',          'Home',        1299.00,    0,  0); -- inactive
+
+-- Orders
+INSERT INTO orders (customer_id, order_date, status) VALUES
+(1, '2025-08-01', 'PLACED'),
+(1, '2025-08-10', 'DELIVERED'),
+(2, '2025-08-04', 'DELIVERED'),
+(3, '2025-08-12', 'PLACED'),
+(4, '2025-08-15', 'CANCELLED');
+
+-- Order Items (unit_price captured at time of order)
+INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES
+(1, 1, 1, 899.00),     -- Aarav: Wireless Mouse
+(1, 3, 2, 299.00),     -- Aarav: USB-C Cable x2
+(2, 2, 1, 3499.00),    -- Aarav: Mechanical Keyboard
+(2, 4, 1, 499.00),     -- Aarav: Water Bottle
+(3, 5, 1, 2499.00),    -- Diya: Running Shoes
+(4, 1, 2, 899.00),     -- Kabir: Wireless Mouse x2
+(5, 3, 1, 299.00);     -- Ishita: USB-C Cable (order cancelled)
+```
+
+---
+
+# 3) Subquery Examples
+
+## A) Basic
+
+### 1) Single-row subquery (scalar): Highest priced active product
+
+```sql
+SELECT product_id, name, price
+FROM products
+WHERE price = (SELECT MAX(price) FROM products WHERE is_active = 1);
+```
+
+### 2) Multi-row subquery with IN: Customers who ordered “Electronics” items
+
+```sql
+SELECT c.customer_id, c.name, c.city
+FROM customers c
+WHERE c.customer_id IN (
+  SELECT DISTINCT o.customer_id
+  FROM orders o
+  JOIN order_items oi ON oi.order_id = o.order_id
+  JOIN products p ON p.product_id = oi.product_id
+  WHERE p.category = 'Electronics'
+);
+```
+
+### 3) Subquery in WHERE using aggregate: Products priced above average price (active only)
+
+```sql
+SELECT product_id, name, price
+FROM products
+WHERE is_active = 1
+  AND price > (SELECT AVG(price) FROM products WHERE is_active = 1);
+```
+
+## B) Intermediate
+
+### 4) Correlated subquery: Customers whose total **DELIVERED** spend > overall average **DELIVERED** spend
+
+```sql
+SELECT c.customer_id, c.name
+FROM customers c
+WHERE (
+  SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0)
+  FROM orders o
+  JOIN order_items oi ON oi.order_id = o.order_id
+  WHERE o.customer_id = c.customer_id
+    AND o.status = 'DELIVERED'
+) > (
+  SELECT AVG(customer_total)
+  FROM (
+    SELECT o.customer_id, COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS customer_total
+    FROM orders o
+    JOIN order_items oi ON oi.order_id = o.order_id
+    WHERE o.status = 'DELIVERED'
+    GROUP BY o.customer_id
+  ) t
+);
+```
+
+### 5) EXISTS: Products that were **ever** ordered (ignores inactive products that were never sold)
+
+```sql
+SELECT p.product_id, p.name
+FROM products p
+WHERE EXISTS (
+  SELECT 1
+  FROM order_items oi
+  WHERE oi.product_id = p.product_id
+);
+```
+
+### 6) NOT EXISTS: Active products **never** ordered (good for “to-promote” list)
+
+```sql
+SELECT p.product_id, p.name
+FROM products p
+WHERE p.is_active = 1
+  AND NOT EXISTS (
+    SELECT 1
+    FROM order_items oi
+    WHERE oi.product_id = p.product_id
+  );
+```
+
+### 7) Subquery in FROM (derived table): Top spend per customer
+
+```sql
+-- Build per-customer totals, then select top N
+SELECT t.customer_id, c.name, t.total_spend
+FROM (
+  SELECT o.customer_id, SUM(oi.quantity * oi.unit_price) AS total_spend
+  FROM orders o
+  JOIN order_items oi ON oi.order_id = o.order_id
+  WHERE o.status <> 'CANCELLED'
+  GROUP BY o.customer_id
+) AS t
+JOIN customers c ON c.customer_id = t.customer_id
+ORDER BY t.total_spend DESC
+LIMIT 3;
+```
+
+### 8) ANY / ALL: Find products cheaper than **all** Electronics products (i.e., cheaper than the cheapest electronics)
+
+```sql
+SELECT product_id, name, price
+FROM products
+WHERE price < ALL (
+  SELECT price FROM products WHERE category = 'Electronics' AND is_active = 1
+)
+AND is_active = 1;
+```
+
+### 9) Subquery in SELECT (scalar per row): Add total quantity sold per product (excluding cancelled orders)
+
+```sql
+SELECT
+  p.product_id,
+  p.name,
+  p.price,
+  (
+    SELECT COALESCE(SUM(oi.quantity), 0)
+    FROM order_items oi
+    JOIN orders o ON o.order_id = oi.order_id
+    WHERE oi.product_id = p.product_id
+      AND o.status <> 'CANCELLED'
+  ) AS total_qty_sold
+FROM products p
+ORDER BY total_qty_sold DESC, p.product_id;
+```
+
+### 10) HAVING with subquery: Customers whose delivered spend is above the **overall** delivered average
+
+```sql
+SELECT c.customer_id, c.name, SUM(oi.quantity * oi.unit_price) AS delivered_spend
+FROM customers c
+JOIN orders o  ON o.customer_id = c.customer_id
+JOIN order_items oi ON oi.order_id = o.order_id
+WHERE o.status = 'DELIVERED'
+GROUP BY c.customer_id, c.name
+HAVING SUM(oi.quantity * oi.unit_price) >
+(
+  SELECT AVG(customer_total)
+  FROM (
+    SELECT o.customer_id, SUM(oi.quantity * oi.unit_price) AS customer_total
+    FROM orders o
+    JOIN order_items oi ON oi.order_id = o.order_id
+    WHERE o.status = 'DELIVERED'
+    GROUP BY o.customer_id
+  ) t
+);
+```
+
+### 11) Semi-realistic business check: Cities where **no** inactive products were ever sold (should be none, but illustrates anti-join)
+
+```sql
+SELECT DISTINCT c.city
+FROM customers c
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM orders o
+  JOIN order_items oi ON oi.order_id = o.order_id
+  JOIN products p ON p.product_id = oi.product_id
+  WHERE o.customer_id = c.customer_id
+    AND p.is_active = 0
+);
+```
+
+---
+
+## 4) Practice Tasks (for students)
+
+1. List customers who **only** bought “Electronics” items (no other categories).
+2. Find the **second highest** priced active product using a subquery.
+3. Show products whose price is **above their category average** (correlated subquery on category).
+4. For each city, show **total delivered revenue** and filter cities **above overall average revenue**.
+5. Find active products **never ordered by “Aarav”** but **ordered by someone else** (use `EXISTS` + `NOT EXISTS`).
+
+
+Perfect — I’ve run the data and generated the **actual outputs** for each practice task. You’ll see five interactive tables on your screen titled:
+
+* “E-comm Subquery Practice – task1”
+* “E-comm Subquery Practice – task2”
+* “E-comm Subquery Practice – task3”
+* “E-comm Subquery Practice – task4”
+* “E-comm Subquery Practice – task5”
+
+Here are the corresponding **SQL solutions** (MySQL-friendly) you can give to students:
+
+### Task 1 — Customers who **only** bought “Electronics” (exclude CANCELLED)
+
+```sql
+SELECT c.customer_id, c.name, c.city
+FROM customers c
+WHERE EXISTS (
+  SELECT 1
+  FROM orders o
+  JOIN order_items oi ON oi.order_id = o.order_id
+  JOIN products p ON p.product_id = oi.product_id
+  WHERE o.customer_id = c.customer_id
+    AND o.status <> 'CANCELLED'
+)
+AND NOT EXISTS (
+  SELECT 1
+  FROM orders o2
+  JOIN order_items oi2 ON oi2.order_id = o2.order_id
+  JOIN products p2 ON p2.product_id = oi2.product_id
+  WHERE o2.customer_id = c.customer_id
+    AND o2.status <> 'CANCELLED'
+    AND p2.category <> 'Electronics'
+);
+```
+
+**Output:** `Kabir (Hyderabad)`
+
+---
+
+### Task 2 — **Second highest** priced active product
+
+```sql
+SELECT product_id, name, price
+FROM products
+WHERE is_active = 1 AND price = (
+  SELECT MAX(price) FROM products
+  WHERE is_active = 1 AND price < (SELECT MAX(price) FROM products WHERE is_active = 1)
+);
+```
+
+**Output:** `Running Shoes — 2499.00`
+
+---
+
+### Task 3 — Products priced **above their category average** (active only)
+
+```sql
+SELECT p.product_id, p.name, p.category, p.price
+FROM products p
+WHERE p.is_active = 1
+  AND p.price > (
+    SELECT AVG(p2.price) FROM products p2
+    WHERE p2.category = p.category AND p2.is_active = 1
+  )
+ORDER BY p.category, p.price DESC;
+```
+
+**Output:** `Mechanical Keyboard (Electronics, 3499.00)`
+
+---
+
+### Task 4 — Cities with **DELIVERED** revenue **above overall delivered average**
+
+```sql
+WITH city_rev AS (
+  SELECT c.city, SUM(oi.quantity * oi.unit_price) AS delivered_revenue
+  FROM customers c
+  JOIN orders o ON o.customer_id = c.customer_id
+  JOIN order_items oi ON oi.order_id = o.order_id
+  WHERE o.status = 'DELIVERED'
+  GROUP BY c.city
+),
+avg_rev AS (
+  SELECT AVG(delivered_revenue) AS avg_rev
+  FROM city_rev
+)
+SELECT cr.city, cr.delivered_revenue
+FROM city_rev cr, avg_rev ar
+WHERE cr.delivered_revenue > ar.avg_rev
+ORDER BY cr.delivered_revenue DESC;
+```
+
+**Output:** `Mumbai — 3998.00`
+
+---
+
+### Task 5 — Active products **never ordered by “Aarav”** but **ordered by someone else** (exclude CANCELLED)
+
+```sql
+SELECT p.product_id, p.name
+FROM products p
+WHERE p.is_active = 1
+  AND EXISTS (
+    SELECT 1
+    FROM orders o2
+    JOIN order_items oi2 ON oi2.order_id = o2.order_id
+    WHERE oi2.product_id = p.product_id
+      AND o2.status <> 'CANCELLED'
+      AND o2.customer_id <> (SELECT customer_id FROM customers WHERE name = 'Aarav')
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM orders o1
+    JOIN order_items oi1 ON oi1.order_id = o1.order_id
+    WHERE oi1.product_id = p.product_id
+      AND o1.status <> 'CANCELLED'
+      AND o1.customer_id = (SELECT customer_id FROM customers WHERE name = 'Aarav')
+  )
+ORDER BY p.product_id;
+```
+
+**Output:** `Running Shoes`
+
+---
+
+
