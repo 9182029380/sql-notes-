@@ -1,0 +1,203 @@
+**Stored Procedures in MySQL** with a **finance domain example**. 
+
+
+---
+
+# 📘 Student Notes: Stored Procedures in MySQL
+
+## 🔹 What is a Stored Procedure?
+
+* A **Stored Procedure** is a **set of SQL statements** that can be saved and reused.
+* Instead of writing the same SQL queries again and again, we can store them in the database and just call the procedure.
+* Think of it like a **function** in programming languages (Java, Python, etc.).
+
+---
+
+## 🔹 Why use Stored Procedures?
+
+1. **Reusability** – Write once, use many times.
+2. **Performance** – Compiled and stored in the database.
+3. **Security** – Limit direct table access and give permission only to execute procedure.
+4. **Maintainability** – Easy to update business logic in one place.
+
+---
+
+## 🔹 Syntax
+
+```sql
+DELIMITER $$
+
+CREATE PROCEDURE procedure_name (parameters)
+BEGIN
+    -- SQL statements
+END $$
+
+DELIMITER ;
+```
+
+To run:
+
+```sql
+CALL procedure_name(parameters);
+```
+
+---
+
+## 🔹 Finance Domain Example
+
+Let’s say we are creating a **Banking System** where customers have **accounts** and we want to calculate interest or check balances.
+
+---
+
+### 1️⃣ Create Database & Table
+
+```sql
+CREATE DATABASE FinanceDB;
+USE FinanceDB;
+
+CREATE TABLE Accounts (
+    account_id INT PRIMARY KEY AUTO_INCREMENT,
+    customer_name VARCHAR(100),
+    balance DECIMAL(10,2),
+    account_type VARCHAR(50)
+);
+
+-- Insert some sample data
+INSERT INTO Accounts (customer_name, balance, account_type) VALUES
+('Ravi Kumar', 50000.00, 'Savings'),
+('Anita Sharma', 120000.00, 'Current'),
+('Suresh Reddy', 80000.00, 'Savings');
+```
+
+---
+
+### 2️⃣ Create a Simple Stored Procedure – Show All Accounts
+
+```sql
+DELIMITER $$
+
+CREATE PROCEDURE GetAllAccounts()
+BEGIN
+    SELECT * FROM Accounts;
+END $$
+
+DELIMITER ;
+```
+
+👉 Run it:
+
+```sql
+CALL GetAllAccounts();
+```
+
+---
+
+### 3️⃣ Stored Procedure with Parameter – Get Balance of a Customer
+
+```sql
+DELIMITER $$
+
+CREATE PROCEDURE GetBalance(IN accId INT)
+BEGIN
+    SELECT customer_name, balance 
+    FROM Accounts
+    WHERE account_id = accId;
+END $$
+
+DELIMITER ;
+```
+
+👉 Run it:
+
+```sql
+CALL GetBalance(1);   -- Shows Ravi Kumar’s balance
+```
+
+---
+
+### 4️⃣ Stored Procedure with Update – Add Interest to Savings Accounts
+
+```sql
+DELIMITER $$
+
+CREATE PROCEDURE AddInterest(IN rate DECIMAL(5,2))
+BEGIN
+    UPDATE Accounts
+    SET balance = balance + (balance * rate / 100)
+    WHERE account_type = 'Savings';
+END $$
+
+DELIMITER ;
+```
+
+👉 Run it:
+
+```sql
+CALL AddInterest(5);  -- Add 5% interest to all Savings accounts
+```
+
+---
+
+### 5️⃣ Stored Procedure with Transaction – Money Transfer
+
+```sql
+DELIMITER $$
+
+CREATE PROCEDURE TransferMoney(
+    IN fromAcc INT,
+    IN toAcc INT,
+    IN amount DECIMAL(10,2)
+)
+BEGIN
+    START TRANSACTION;
+
+    -- Deduct from sender
+    UPDATE Accounts
+    SET balance = balance - amount
+    WHERE account_id = fromAcc;
+
+    -- Add to receiver
+    UPDATE Accounts
+    SET balance = balance + amount
+    WHERE account_id = toAcc;
+
+    COMMIT;
+END $$
+
+DELIMITER ;
+```
+
+👉 Run it:
+
+```sql
+CALL TransferMoney(1, 2, 5000);  -- Transfer ₹5000 from Ravi to Anita
+```
+
+---
+
+## 🔹 Output Examples
+
+* Before Transfer:
+
+```
+1 | Ravi Kumar   | 50000.00 | Savings
+2 | Anita Sharma | 120000.00| Current
+```
+
+* After `CALL TransferMoney(1,2,5000);`
+
+```
+1 | Ravi Kumar   | 45000.00 | Savings
+2 | Anita Sharma | 125000.00| Current
+```
+
+---
+
+## 🔹 Practice Tasks for Students
+
+1. Write a procedure to **show all Current accounts only**.
+2. Write a procedure to **deposit money** into an account.
+3. Write a procedure to **calculate annual interest** for all accounts.
+4. Write a procedure to **find customers with balance greater than ₹1,00,000**.
+
+---
